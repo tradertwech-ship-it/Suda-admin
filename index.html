@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>M SUDAISE Admin App</title><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#2f3e1b"><link rel="manifest" href="manifest.json"><link rel="icon" href="logo.png"><link rel="apple-touch-icon" href="logo.png">
+<style>
+:root{--g:#4a5d23;--gd:#2f3e1b;--gl:#e9efdc;--grey:#f3f4f1}
+*{box-sizing:border-box;margin:0;padding:0}body{font-family:Segoe UI,Arial,sans-serif;background:var(--grey);color:#222}
+header{background:var(--gd);color:#fff;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+main{max-width:1000px;margin:0 auto;padding:16px;display:grid;gap:16px}
+.box{background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 4px #0001}h3{color:var(--gd);margin-bottom:10px}
+.f{display:grid;gap:10px}.r2{display:grid;grid-template-columns:1fr 1fr;gap:10px}label{font-size:13px;font-weight:600;display:grid;gap:4px}
+input,select,textarea{font:inherit;border:1px solid #d0d4c8;border-radius:10px;padding:10px;width:100%}
+.btn{background:var(--g);color:#fff;border:0;padding:10px 16px;border-radius:10px;cursor:pointer;font:inherit;font-weight:600}
+.btn.alt{background:#fff;color:var(--g);border:1.5px solid var(--g)}.btn.red{background:#c0392b}.btn.sm{padding:6px 10px;font-size:13px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{padding:8px;border-bottom:1px solid #eee;text-align:left;vertical-align:middle}th{background:var(--grey)}
+td img{width:50px;height:50px;object-fit:cover;border-radius:8px}.note{background:var(--gl);border-radius:10px;padding:10px;font-size:13px}
+#prev{max-width:150px;border-radius:10px;display:none}.tw{overflow-x:auto}.err{background:#fde8e6;color:#9b2c20}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--gd);color:#fff;padding:10px 18px;border-radius:10px;display:none;z-index:9}
+@media(max-width:600px){.r2{grid-template-columns:1fr}}
+</style></head><body>
+<header><b style="display:flex;align-items:center;gap:8px"><img src="logo.png" alt="" style="height:30px;background:#fff;border-radius:6px" onerror="this.remove()">M SUDAISE – Admin App</b><button class="btn alt sm" id="out" style="display:none" onclick="logout()">Logout</button></header>
+<main>
+ <div id="status" class="note" style="display:none"></div>
+ <div id="setup" class="note err" style="display:none">Admin app is not connected yet. Open <b>config.js</b> and paste your Supabase URL and anon key (see SETUP-GUIDE.txt).</div>
+ <form id="login" class="box f" style="max-width:380px;margin:20px auto;display:none" onsubmit="event.preventDefault();login()"><h3>🔐 Admin login</h3>
+  <label>Email<input id="em" type="email" required></label><label>Password<input id="pw" type="password" required></label><button class="btn">Login</button></form>
+ <div id="app" style="display:none;gap:16px;display:none">
+  <form class="box f" id="pf" onsubmit="event.preventDefault();save()"><h3 id="pft">Add a product</h3><input type="hidden" name="id">
+   <div class="r2"><label>Product name<input name="name" required></label><label>Category<select name="category"></select></label></div>
+   <div class="r2"><label>Price (UGX)<input name="price" type="number" min="0" required></label><label>Old price (UGX, optional)<input name="oldPrice" type="number" min="0"></label></div>
+   <div class="r2"><label>Stock quantity<input name="stock" type="number" min="0" required></label><label>Colours (comma separated)<input name="colours" placeholder="Black, Brown"></label></div>
+   <label>Description<textarea name="desc" rows="3"></textarea></label>
+   <label>Product photo<input type="file" id="file" accept="image/*"></label><img id="prev">
+   <div style="display:flex;gap:14px;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="featured" style="width:auto"> Top Picks</label><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="best" style="width:auto"> Best Sellers</label></div>
+   <div style="display:flex;gap:8px"><button class="btn" id="sv">Save product</button><button type="button" class="btn alt" onclick="resetForm()">Clear</button></div></form>
+  <div class="box tw"><h3>Products (<span id="cnt">0</span>)</h3><table><thead><tr><th></th><th>Name</th><th>Category</th><th>Price</th><th>Stock</th><th></th></tr></thead><tbody id="list"></tbody></table></div>
+ </div>
+</main><div id="toast"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script>
+const CATS=['Office Chairs','Office Desks','Reception Chairs','Filing Cabinets','Salon Chairs','Barber Chairs','Wash Basins','Mirrors','Trolleys','Accessories'];
+const $=id=>document.getElementById(id),F=$('pf');let blob=null,P=[],sb;
+F.category.innerHTML=CATS.map(c=>`<option>${c}</option>`).join('');
+const fmt=n=>'UGX '+Number(n||0).toLocaleString('en-UG');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._t);t._t=setTimeout(()=>t.style.display='none',2600)}
+const C=window.MS_CONFIG||{};
+if(!C.SUPABASE_URL||!C.SUPABASE_KEY||typeof supabase==='undefined'){$('setup').style.display='block'}
+else{sb=supabase.createClient(C.SUPABASE_URL,C.SUPABASE_KEY);sb.auth.getSession().then(({data})=>data.session?start():($('login').style.display='grid'))}
+async function login(){const {error}=await sb.auth.signInWithPassword({email:$('em').value,password:$('pw').value});if(error)return toast('Login failed: '+error.message);start()}
+async function logout(){await sb.auth.signOut();location.reload()}
+function start(){$('login').style.display='none';$('app').style.display='grid';$('out').style.display='inline-block';load()}
+async function check(){const s=$('status');s.style.display='block';
+  const t=await sb.from('products').select('id',{count:'exact',head:true});
+  if(t.error){s.className='note err';s.textContent='⚠ Database not ready: '+t.error.message+' — run setup.sql in Supabase (SQL Editor).';return}
+  const b=await sb.storage.from('product-images').list('',{limit:1});
+  if(b.error){s.className='note err';s.textContent='⚠ Photo storage not ready: '+b.error.message+' — run setup.sql again.';return}
+  s.className='note';s.textContent='✅ Connected to Supabase – products you save here appear on the website instantly.'}
+async function load(){check();const {data,error}=await sb.from('products').select('*').order('created_at',{ascending:false});if(error)return toast(error.message);P=data;render()}
+$('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{const im=new Image();im.onload=()=>{const s=Math.min(1,1000/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=im.width*s;c.height=im.height*s;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(im,0,0,c.width,c.height);c.toBlob(b=>{blob=b;$('prev').src=URL.createObjectURL(b);$('prev').style.display='block'},'image/jpeg',.85)};im.src=ev.target.result};r.readAsDataURL(f)};
+async function save(){
+  $('sv').disabled=true;$('sv').textContent='Saving...';
+  try{
+    const id=F.id.value,old=P.find(x=>x.id===id);let url=old?old.image_url:'';
+    if(blob){const path=Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+      const {error}=await sb.storage.from('product-images').upload(path,blob,{contentType:'image/jpeg'});if(error)throw error;
+      url=sb.storage.from('product-images').getPublicUrl(path).data.publicUrl}
+    const row={name:F.name.value,category:F.category.value,price:+F.price.value,old_price:+F.oldPrice.value||0,stock:+F.stock.value,colours:F.colours.value,description:F.desc.value,featured:F.featured.checked,best:F.best.checked,image_url:url};
+    const {error}=id?await sb.from('products').update(row).eq('id',id):await sb.from('products').insert(row);if(error)throw error;
+    toast('Saved ✓ – live on the website');resetForm();load();
+  }catch(e){toast('Error: '+(e.message||e))}
+  $('sv').disabled=false;$('sv').textContent='Save product';
+}
+function resetForm(){F.reset();F.id.value='';blob=null;$('prev').style.display='none';$('pft').textContent='Add a product'}
+function edit(id){const p=P.find(x=>x.id===id);F.id.value=p.id;F.name.value=p.name;F.category.value=p.category;F.price.value=p.price;F.oldPrice.value=p.old_price||'';F.stock.value=p.stock;F.colours.value=p.colours||'';F.desc.value=p.description||'';F.featured.checked=!!p.featured;F.best.checked=!!p.best;blob=null;$('prev').src=p.image_url||'';$('prev').style.display=p.image_url?'block':'none';$('pft').textContent='Edit product';scrollTo(0,0)}
+async function del(id){if(!confirm('Remove this product?'))return;const {error}=await sb.from('products').delete().eq('id',id);if(error)return toast(error.message);toast('Removed');load()}
+function render(){$('cnt').textContent=P.length;$('list').innerHTML=P.map(p=>`<tr><td>${p.image_url?`<img src="${esc(p.image_url)}">`:''}</td><td>${esc(p.name)}</td><td>${esc(p.category)}</td><td>${fmt(p.price)}</td><td>${p.stock}</td><td style="white-space:nowrap"><button class="btn sm" onclick="edit('${p.id}')">Edit</button> <button class="btn red sm" onclick="del('${p.id}')">Delete</button></td></tr>`).join('')||'<tr><td colspan="6">No products yet. Add your first one above.</td></tr>'}
+</script></body></html>
